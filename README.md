@@ -14,11 +14,9 @@ others), and most are plain instructions that work in any tool that accepts a pr
 | [planning-handoff](skills/planning-handoff) | Turns finished planning, design or debugging into a `handoff/` plan with numbered, paste-ready unit prompts. Each unit has its branch, focused tests and commit; a final unit reviews, verifies and waits for approval before merging. |
 | [cross-device-handoff](skills/cross-device-handoff) | Extension of planning-handoff for planning on one machine and building on another. |
 | [t3-handoff-run](skills/t3-handoff-run) | Runs a handoff plan as T3 Code threads: one thread per unit, started as dependencies land, with status, stall detection and a kill switch. |
+| [shared-tool-scaffold](skills/shared-tool-scaffold) | Scaffolds a small browser-based team tool that colleagues run from a shared SharePoint/OneDrive folder: Flask backend, single-file frontend, double-click start files, device-local virtualenv, atomic saves with backups, and live multi-user sync with conflict handling. The patterns come from lessons I learned building shared tools during my time at BCG. |
 | [course-study-assistant](skills/course-study-assistant) | Template for a course-specific study assistant that answers from the lecture's own material and conventions and keeps a qualitative record of what the learner has understood. |
 | [english-headsup](skills/english-headsup) | Occasionally appends a one-line tip on my English, without interrupting the task. |
-
-`shared-tool-scaffold`, a scaffold for small browser-based team tools that run from a shared
-folder, will follow.
 
 ## Skills by others that I use
 

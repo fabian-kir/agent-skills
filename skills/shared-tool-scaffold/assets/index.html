@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{PROJECT_NAME}}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root{
+    --accent:{{THEME_COLOR}};
+    --bg:#0f172a; --panel:#1e293b; --border:#334155;
+    --text:#e2e8f0; --muted:#94a3b8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    background:var(--bg);color:var(--text)}
+  #hdr{display:flex;align-items:center;gap:16px;padding:12px 20px;
+    background:var(--panel);border-bottom:1px solid var(--border)}
+  #hdr h1{font-size:16px;margin:0}
+  #hdr .sub{font-size:12px;color:var(--muted)}
+  #hdr-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  #save-status{font-size:12px;min-width:120px;text-align:right}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:6px;
+    padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn.secondary{background:transparent;color:var(--text);border:1px solid var(--border)}
+  #sync-banner{display:none;align-items:center;gap:12px;background:#7c2d12;
+    color:#fed7aa;padding:8px 20px;font-size:13px}
+  #sync-banner .btn{padding:3px 10px;font-size:12px}
+  #app{padding:24px 20px}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div>
+    <h1>{{PROJECT_NAME}}</h1>
+    <div class="sub">{{SUBTITLE}}</div>
+  </div>
+  <div id="hdr-right">
+    <span id="save-status"></span>
+    <button class="btn secondary" onclick="manualSave()">Save</button>
+  </div>
+</div>
+
+<div id="sync-banner"></div>
+
+<div id="app"></div>
+
+<script>
+// ── APP STATE ─────────────────────────────────────────────────────────────
+// S holds everything. `rev` is the server revision this client last synced to;
+// it is NOT part of the persisted payload (the server owns it).
+const S = {
+  rev: 0,
+  // ── your data model goes here ──
+  items: [],
+};
+
+// serialize(): the plain object that gets PERSISTED and SYNCED. Keep it to real
+// data only — view-only prefs (filters, open panels, timers) should live in
+// separate module-level vars so they don't sync between machines.
+function serialize(){
+  return { items: S.items };
+}
+
+// hydrate(state): apply a loaded/remote state object onto S.
+function hydrate(state){
+  if(!state) return;
+  if(Array.isArray(state.items)) S.items = state.items;
+  if(state.rev !== undefined) S.rev = state.rev;
+}
+
+// renderApp(): ─────────────  YOUR APP HERE  ─────────────
+// Build the UI from S. Call autoSave() after any change that should persist.
+function renderApp(){
+  const el = document.getElementById('app');
+  el.innerHTML = `
+    <p>Edit <code>serialize()</code>, <code>hydrate()</code> and
+       <code>renderApp()</code> to build your tool.</p>
+    <button class="btn" onclick="addItem()">+ Add item (demo)</button>
+    <ul>${S.items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+}
+function addItem(){
+  S.items.push('Item ' + (S.items.length + 1));
+  renderApp();
+  autoSave();   // persist + broadcast
+}
+// ────────────────────────────────────────────────────────
+
+// ══════════════════════════════════════════════════════════════════════════
+//  LIVE-SYNC CLIENT — you rarely need to touch anything below this line.
+// ══════════════════════════════════════════════════════════════════════════
+let saveTimer = null;
+
+function setSt(msg, col){
+  const e = document.getElementById('save-status');
+  e.textContent = msg; e.style.color = col || 'var(--muted)';
+}
+
+async function apiLoad(){
+  try{
+    const r = await fetch('/state');
+    if(r.ok){ const d = await r.json(); return Object.keys(d).length ? d : null; }
+  }catch(e){}
+  return null;
+}
+
+async function apiSave(){
+  try{
+    const r = await fetch('/state', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({}, serialize(), {baseRev: S.rev})),
+    });
+    if(r.status === 409){ handleConflict((await r.json()).state); return; }
+    if(r.ok){
+      const d = await r.json();
+      if(d.rev !== undefined) S.rev = d.rev;
+      setSt('✓ Saved', '#4ade80');
+      setTimeout(()=>{ if(document.getElementById('save-status').textContent==='✓ Saved') setSt(''); }, 2500);
+    } else setSt('⚠ Save failed', '#f59e0b');
+  }catch(e){ setSt('⚠ Server unreachable', '#ef4444'); }
+}
+
+function autoSave(){
+  setSt('…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{ saveTimer = null; apiSave(); }, 1200);
+}
+function manualSave(){ apiSave(); }
+
+// ── polling + conflict handling ──
+let pollTimer = null, conflictState = null;
+
+// Never overwrite someone mid-edit: treat a queued save, an open editor, or a
+// focused input as "busy" and defer adopting remote changes until idle.
+function hasLocalEdit(){
+  if(saveTimer) return true;
+  const a = document.activeElement;
+  if(a && (a.tagName==='INPUT' || a.tagName==='TEXTAREA')) return true;
+  return false;
+}
+
+function applyRemote(s){
+  if(!s) return;
+  hydrate(s);
+  renderApp();
+}
+
+async function adoptRemote(){
+  const saved = await apiLoad();
+  if(saved){
+    applyRemote(saved);
+    setSt('↻ Updated by another user', '#60a5fa');
+    setTimeout(()=>{ if(document.getElementById('save-status').textContent.startsWith('↻')) setSt(''); }, 3000);
+  }
+}
+
+async function pollRev(){
+  if(conflictState) return;   // wait for the user to resolve first
+  try{
+    const r = await fetch('/rev');
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.rev !== undefined && d.rev !== S.rev){
+      if(hasLocalEdit()) setSt('↻ New changes available…', '#f59e0b');
+      else await adoptRemote();
+    }
+  }catch(e){}
+}
+
+function handleConflict(serverState){
+  conflictState = serverState;
+  setSt('⚠ Save conflict', '#ef4444');
+  const b = document.getElementById('sync-banner');
+  b.style.display = 'flex';
+  b.innerHTML = `<span>⚠ Another user saved in the meantime.</span>`
+    + `<button class="btn secondary" onclick="resolveConflict('reload')">Load theirs</button>`
+    + `<button class="btn" onclick="resolveConflict('force')">Keep mine</button>`;
+}
+
+function resolveConflict(mode){
+  const s = conflictState;
+  document.getElementById('sync-banner').style.display = 'none';
+  conflictState = null;
+  if(mode === 'reload'){
+    applyRemote(s);
+    setSt('↻ Updated', '#60a5fa');
+  } else {   // keep mine: adopt their rev, then overwrite
+    if(s && s.rev !== undefined) S.rev = s.rev;
+    apiSave();
+  }
+}
+
+// ── init ──
+async function init(){
+  setSt('Loading…');
+  const saved = await apiLoad();
+  if(saved){ hydrate(saved); setSt('✓ Loaded', '#4ade80'); setTimeout(()=>setSt(''), 3000); }
+  else setSt('');
+  renderApp();
+  pollTimer = setInterval(pollRev, 3000);
+}
+init();
+</script>
+</body>
+</html>

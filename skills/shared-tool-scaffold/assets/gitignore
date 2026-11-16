@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local state artefacts (never commit runtime data or backups)
+.state_*.tmp
+*.backup_*.yaml
+backups/
+
+# OS cruft
+.DS_Store
+Thumbs.db
